@@ -364,14 +364,18 @@ void MainGraph::on_addLbl_clicked()
 void MainGraph::on_QCPMousePressed_pressed(QMouseEvent *event){
     Qt::KeyboardModifiers mod = baseApp->keyboardModifiers();
     bool ctrlPressed = mod.testFlag(Qt::ControlModifier);
-    if(!ctrlPressed){
+    if(!ctrlPressed && selected.size() == 0){
         plt->setSelectionRectMode(QCP::srmNone);
         isMultiSelection = false;
     }
-    else
+    else if(ctrlPressed)
     {
         plt->setSelectionRectMode(QCP::srmZoom);
         isMultiSelection = true;
+    }
+    else{
+        isMultiSelection = true;
+        plt->setSelectionRectMode(QCP::srmNone);
     }
 
     //check if we are touching a label:
@@ -420,17 +424,17 @@ void MainGraph::keyPressEvent(QKeyEvent *e){
 }
 
 void MainGraph::on_selection_changed_global(){
-    bool foundVLine = true;
+    bool foundVLine = false;
     selected.clear();
     for(auto iter = lbldData.begin(); iter!= lbldData.end(); iter++)
     {
         if(iter->line->selected())
         {
             selected.push_back(iter->t);
-            foundVLine = false;
+            foundVLine = true;
         }
     }
-    if(foundVLine)
+    if(!foundVLine)
     {
         QCPDataSelection dataSelection = plt->graph(0)->selection();
         if(!dataSelection.isEmpty())
@@ -517,6 +521,8 @@ void MainGraph::removeFromSaveList(){//problem
     if(selected.size()>0 and s.isEmpty())
         s = "Nothing to erase";
     ui->ev->setText(s);
+    plt->deselectAll();
+    selected.clear();
     plt->replot();
 }
 
@@ -581,6 +587,9 @@ void MainGraph::on_QCPMouseReleased_release(QMouseEvent*e){
         dragging = false;
         hovered = nullptr;
         plt->setInteraction(QCP::iRangeDrag, true);
+        newSaveFile = true;
+        QString s = "Moved (Unsaved changes)";
+        ui->ev->setText(s);
     }
 }
 
