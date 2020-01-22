@@ -22,6 +22,13 @@ MainGraph::MainGraph(QApplication *app, QWidget *parent)
     nextLabel->position->setCoords(0.998, 0); // place position at center/top of axis rect
     nextLabel->setFont(QFont(font().family(), 16)); // make font a bit larger
     nextLabel->setText("");
+    //Add axis for lbl
+    plt->axisRect()->addAxes(QCPAxis::atLeft);
+    QCPAxis *myAxis = plt->axisRect(0)->axis(QCPAxis::atLeft, 1);
+    myAxis->setRange(-1,1);
+    myAxis->setTickLabels(false);
+    myAxis->setTicks(false);
+    myAxis->setVisible(false);
     //nextLabel->setPen(QPen(Qt::black)); // show black border around text
 
 
@@ -45,13 +52,17 @@ MainGraph::~MainGraph()
     if(annotationFile.isOpen()){
         annotationFile.close();
     }
-
+    for(auto it = lbldData.begin();it != lbldData.end(); it++)
+        plt->removeItem(it->line);
+    for (int i = 0; i < plt->itemCount(); i++){
+        plt->removeItem(plt->item(i));
+    }
 }
 
 void MainGraph::drawLineChart()
 {
     QVector<double> x,y;
-    uint minRange = 10000, maxRange = 0, tRange = 0;
+    double minRange = 10000, maxRange = 0, tRange = 0;
     const int numPointToDisplay = 100;
     int i = 0;
 
@@ -59,10 +70,9 @@ void MainGraph::drawLineChart()
     ui->Save->setEnabled(true);
     ui->findSaveLocation->setEnabled(true);
 
-    for (int i = 0; i < plt->graphCount();i++)
-        plt->removeGraph(i);
 
-    for(QVector<QPair<uint,uint>>::iterator iter = data.begin(); iter != data.end(); iter ++,i++){
+
+    for(QVector<QPair<double,double>>::iterator iter = data.begin(); iter != data.end(); iter ++,i++){
         x.append(iter->first);
         y.append(iter->second);
         if(i<numPointToDisplay){
@@ -76,13 +86,14 @@ void MainGraph::drawLineChart()
 
 
     plt->addGraph(plt->xAxis, plt->yAxis);
+
     plt->graph(0)->setData(x, y);
 
     plt->setInteraction(QCP::iRangeDrag, true);
     plt->setInteraction(QCP::iRangeZoom, true);
     plt->setInteraction(QCP::iSelectPlottables, true);
-    plt->setInteraction(QCP::iMultiSelect);
-    plt->setInteraction(QCP::iSelectItems);
+    plt->setInteraction(QCP::iMultiSelect, true);
+    plt->setInteraction(QCP::iSelectItems, true);
     //plt->graph(0)->setSelectable(QCP::stSingleData);
     plt->graph(0)->setSelectable(QCP::stMultipleDataRanges);
 
@@ -108,8 +119,6 @@ void MainGraph::drawLineChart()
 
     plt->replot();
 
-    //SELECTION
-    QObject::connect(plt,SIGNAL(itemClick(QCPAbstractItem *, QMouseEvent *)),this,SLOT(on_item_click(QCPAbstractItem *, QMouseEvent *)));
 }
 
 
@@ -149,7 +158,7 @@ void MainGraph::on_sourcePath_returnPressed()
 }
 
 void MainGraph::loadFile(QString fileName){
-    //save and clear the previous data file and load the new one
+    //save and clear the previous data, load the new one
     save();
     if (ui->key->isEnabled()){
         ui->key->setEnabled(false);
@@ -161,9 +170,18 @@ void MainGraph::loadFile(QString fileName){
     ui->lblKeyList->update();
     if(annotationFile.isOpen()){
         annotationFile.close();
+        annotationFile.setFileName("");
     }
-
+    ui->saveFilePath->clear();
+    for (int i = 0; i < plt->graphCount();i++)
+        plt->removeGraph(i);
+    for(auto it = lbldData.begin();it != lbldData.end(); it++)
+        plt->removeItem(it->line);
     data.clear();
+    lbldData.clear();
+    selected.clear();
+    keyLbl.clear();
+
     fileLoaded = 0;
     QString line;
     QStringList wordList;
@@ -173,12 +191,17 @@ void MainGraph::loadFile(QString fileName){
             throw "Impossible to read the selected file";
         QTextStream in(&file);
 
+        double t = 0;
         while (!in.atEnd()) {
             line = in.readLine();
             wordList = line.split(',');
-            QPointF value(wordList[0].toInt(),wordList[1].toInt());
-
-            QPair<uint,uint> vectorThisPoint(wordList[0].toInt(),wordList[1].toInt());
+            QPair<double,double> vectorThisPoint;
+            if(wordList.size() == 1){
+                vectorThisPoint = (QPair<double,double>(t,wordList[0].toDouble()));
+                t++;
+            }
+            else
+                vectorThisPoint = (QPair<double,double>(wordList[0].toDouble(),wordList[1].toDouble()));
             data << vectorThisPoint;
         }
         file.close();
@@ -234,9 +257,11 @@ void MainGraph::openAndLoadAnnotation(QString fileName){
     save();
     for(auto it = lbldData.begin();it != lbldData.end(); it++)
         plt->removeItem(it->line);
+    plt->deselectAll();
     plt->replot();
     keyLbl.clear();
     lbldData.clear();
+
     QString line;
     QStringList wordList;
     if(annotationFile.isOpen()){
@@ -271,7 +296,7 @@ void MainGraph::openAndLoadAnnotation(QString fileName){
             }
             if (!present)
                 keyLbl.push_back(lbl);
-            LabelData dataL = {lbl,wordList[0].toUInt(),new VLine(plt,ColorTheme::Red)};
+            LabelData dataL = {lbl,wordList[0].toDouble(),new VLine(plt,ColorTheme::Red)};
             lbldData.push_back(dataL);
             newSaveFile = true;
             addLabelDataToPlot(dataL);
@@ -358,10 +383,11 @@ void MainGraph::on_addLbl_clicked()
             nextLabel->setText(nextLblStr.append(keyLbl[nextLblPos].label));
             plt->replot();
         }
+        //plt->deselectAll();
     }
 }
 
-void MainGraph::on_QCPMousePressed_pressed(QMouseEvent *event){
+void MainGraph::on_QCPMousePressed_pressed(QMouseEvent *){
     Qt::KeyboardModifiers mod = baseApp->keyboardModifiers();
     bool ctrlPressed = mod.testFlag(Qt::ControlModifier);
     if(!ctrlPressed && selected.size() == 0){
@@ -494,13 +520,14 @@ void MainGraph::addToSaveList(Label inLbl){
 }
 
 void MainGraph::addLabelDataToPlot(LabelData lblToAdd){
-    //Get value
-    //double val = plt->graph(0)->data()->findEnd(lblToAdd.t-1,false)->value;
-    double val = findAvgLastNPoints(lblToAdd.t);
-    lblToAdd.line->start->setCoords(lblToAdd.t, val+400);
-    lblToAdd.line->end->setCoords(lblToAdd.t, val-100);
+    lblToAdd.line->m_lineLabel->position->axisRect()->axis(QCPAxis::atLeft, 1);
+    lblToAdd.line->positions().front()->setAxes(plt->xAxis,plt->axisRect(0)->axis(QCPAxis::atLeft, 1));
+    lblToAdd.line->positions().last()->setAxes(plt->xAxis,plt->axisRect(0)->axis(QCPAxis::atLeft, 1));
 
-    lblToAdd.line->UpdateLabel(lblToAdd.t, val+425,QString(lblToAdd.lbl.key));
+    lblToAdd.line->start->setCoords(lblToAdd.t, 0.8);
+    lblToAdd.line->end->setCoords(lblToAdd.t, -0.8);
+
+    lblToAdd.line->UpdateLabel(lblToAdd.t, 0.9,QString(lblToAdd.lbl.key));
     lblToAdd.line->SetVisibleCustom(true);
 }
 
@@ -526,15 +553,10 @@ void MainGraph::removeFromSaveList(){//problem
     plt->replot();
 }
 
-void MainGraph::on_item_click(QCPAbstractItem * item, QMouseEvent *e){
-    if(QCPItemLine *a = qobject_cast<QCPItemLine *>(item)){
-        return;
-    }
-}
-
 void MainGraph::on_mouse_move(QMouseEvent* e){
     double x = plt->xAxis->pixelToCoord(e->localPos().x());
-    double y = plt->yAxis->pixelToCoord(e->localPos().y());
+    double y = plt->axisRect(0)->axis(QCPAxis::atLeft, 1)->pixelToCoord(e->localPos().y());
+    //double y = plt->yAxis->pixelToCoord(e->localPos().y());
     if(!dragging && !e->buttons().testFlag(Qt::LeftButton)){
         double tollerance = 5;
         bool found = false;
@@ -569,27 +591,29 @@ void MainGraph::on_mouse_move(QMouseEvent* e){
             xNew = xNew1;
         else
             xNew = xNew2;
-        double vNew = findAvgLastNPoints(xNew);
 
-        hovered->line->start->setCoords(xNew, vNew+400);
-        hovered->line->end->setCoords(xNew, vNew-100);
+        hovered->line->start->setCoords(xNew, 0.8);
+        hovered->line->end->setCoords(xNew, -0.8);
 
-        hovered->line->UpdateLabel(xNew, vNew+425,QString(hovered->lbl.key));
+        hovered->line->UpdateLabel(xNew, 0.9 ,QString(hovered->lbl.key));
         hovered->line->SetVisibleCustom(true);
 
-        hovered->t = static_cast<unsigned long>(xNew);
+        hovered->t = static_cast<double>(xNew);
+        if(xNew != x)
+        {
+            QString s = "Moved (Unsaved changes)";
+            ui->ev->setText(s);
+        }
         plt->replot();
     }
 }
 
-void MainGraph::on_QCPMouseReleased_release(QMouseEvent*e){
+void MainGraph::on_QCPMouseReleased_release(QMouseEvent*){
     if (dragging){
         dragging = false;
         hovered = nullptr;
         plt->setInteraction(QCP::iRangeDrag, true);
         newSaveFile = true;
-        QString s = "Moved (Unsaved changes)";
-        ui->ev->setText(s);
     }
 }
 

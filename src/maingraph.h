@@ -52,7 +52,7 @@ struct Label{
 
 struct LabelData{
     Label lbl;
-    unsigned long t;
+    double  t;
     VLine *line;
     bool operator<(LabelData const & that) const {
            return t<that.t;
@@ -97,15 +97,13 @@ private slots:
 
     //MINE:
 
-    void on_QCPMousePressed_pressed(QMouseEvent *event);
-
-    void on_item_click(QCPAbstractItem * item, QMouseEvent *e);
+    void on_QCPMousePressed_pressed(QMouseEvent *);
 
     void on_selection_changed_global();
 
     void on_mouse_move(QMouseEvent* e);
 
-    void on_QCPMouseReleased_release(QMouseEvent* e);
+    void on_QCPMouseReleased_release(QMouseEvent* );
 
 
 private:
@@ -115,7 +113,7 @@ private:
 
 
     //Test CustomPlot
-    QVector<QPair<uint,uint>> data;
+    QVector<QPair<double,double>> data;
     QCustomPlot *plt;
 
     //Files and lbl relative variables
@@ -126,10 +124,10 @@ private:
     QString fileName;
     QString fileToSave;
     QFile annotationFile;
-    QTextStream annotationStream;
+    //QTextStream annotationStream;
     std::vector<Label> keyLbl;
     uint8_t nextLblPos;
-    std::list<uint> selected;
+    std::list<double> selected;
     std::list<LabelData> lbldData; //This will hold ALL the current labels always
     LabelData *hovered;
 

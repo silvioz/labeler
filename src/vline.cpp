@@ -36,6 +36,7 @@ VLine::VLine(QCustomPlot *parentPlot, ColorTheme color)
     this->setPen(pen);
     this->setSelectable(true);
     this->mSelectedPen = penSel;
+
 }
 VLine::~VLine(){
     parentPlot()->removeItem(m_lineLabel);
@@ -44,6 +45,7 @@ VLine::~VLine(){
 void VLine::UpdateLabel(double x, double y, QString text)
 {
     m_lineLabel->setText(text);
+    m_lineLabel->position->setAxes(this->positions().first()->keyAxis(),this->positions().first()->valueAxis());
     m_lineLabel->position->setType(QCPItemPosition::ptPlotCoords);
     m_lineLabel->position->setCoords(x, y);
 }
