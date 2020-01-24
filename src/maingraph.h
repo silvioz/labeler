@@ -113,8 +113,9 @@ private:
 
 
 
-    //Test CustomPlot
+    //central plot
     QVector<QPair<double,double>> data;
+    double deltaMax;
     QCustomPlot *plt;
 
     //Files and lbl relative variables

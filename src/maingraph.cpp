@@ -12,6 +12,7 @@ MainGraph::MainGraph(QApplication *app, QWidget *parent)
       keyLbl(),
       data(),
       baseApp(app),
+      deltaMax(0),
       ui(new Ui::MainGraph)
 {
     ui->setupUi(this);
@@ -152,6 +153,7 @@ void MainGraph::on_sourcePath_returnPressed()
 void MainGraph::loadFile(QString fileName){
     //save and clear the previous data, load the new one
     reset();
+    double max = 0,min = 100000000;
 
     fileLoaded = 0;
     QString line;
@@ -173,10 +175,15 @@ void MainGraph::loadFile(QString fileName){
             }
             else
                 vectorThisPoint = (QPair<double,double>(wordList[0].toDouble(),wordList[1].toDouble()));
+            if(vectorThisPoint.second>max)
+                max = vectorThisPoint.second;
+            if(vectorThisPoint.second<min)
+                min = vectorThisPoint.second;
             data << vectorThisPoint;
         }
         file.close();
     }
+    deltaMax = max-min;
     fileLoaded = 1;
     drawLineChart();
 }
@@ -262,9 +269,9 @@ void MainGraph::openAndLoadAnnotation(QString fileName){
             if (!present)
                 keyLbl.push_back(lbl);
             LabelData dataL = {lbl,wordList[0].toDouble(),new VLine(plt,ColorTheme::Red)};
-            lbldData.push_back(dataL);
             newSaveFile = true;
             addLabelDataToPlot(dataL);
+            lbldData.push_back(dataL);
         }
         if(keyLbl.size()>0)
         {
@@ -351,20 +358,17 @@ void MainGraph::on_addLbl_clicked()
 }
 
 void MainGraph::on_QCPMousePressed_pressed(QMouseEvent *){
+    //plt->axis
     Qt::KeyboardModifiers mod = baseApp->keyboardModifiers();
     bool ctrlPressed = mod.testFlag(Qt::ControlModifier);
-    if(!ctrlPressed && selected.size() == 0){
+    if(!ctrlPressed){// && selected.size() == 0){
         plt->setSelectionRectMode(QCP::srmNone);
         isMultiSelection = false;
     }
-    else if(ctrlPressed)
+    else
     {
         plt->setSelectionRectMode(QCP::srmZoom);
         isMultiSelection = true;
-    }
-    else{
-        isMultiSelection = true;
-        plt->setSelectionRectMode(QCP::srmNone);
     }
 
     //check if we are touching a label:
@@ -382,7 +386,7 @@ void MainGraph::keyPressEvent(QKeyEvent *e){
     bool ctrlPressed = mod.testFlag(Qt::ControlModifier);
     if(e->key() == Qt::Key_S && ctrlPressed)
         save();
-    if(isMultiSelection && !selected.empty()){
+    if(!selected.empty()){
         for(unsigned long i = 0;i<keyLbl.size();i++)
         {
             if (e->text()==keyLbl[i].key){
@@ -417,41 +421,47 @@ void MainGraph::keyPressEvent(QKeyEvent *e){
 }
 
 void MainGraph::on_selection_changed_global(){
-    bool foundVLine = false;
     selected.clear();
     for(auto iter = lbldData.begin(); iter!= lbldData.end(); iter++)
     {
         if(iter->line->selected())
         {
             selected.push_back(iter->t);
-            foundVLine = true;
         }
     }
-    if(!foundVLine)
+    QCPDataSelection dataSelection = plt->graph(0)->selection();
+    if(!dataSelection.isEmpty())
     {
-        QCPDataSelection dataSelection = plt->graph(0)->selection();
-        if(!dataSelection.isEmpty())
+        int numPoint = 0;
+        bool vLinePresent = false;
+        foreach (QCPDataRange dataRange, dataSelection.dataRanges())
         {
-            int numPoint = 0;
-            foreach (QCPDataRange dataRange, dataSelection.dataRanges())
-            {
-              QCPGraphDataContainer::const_iterator begin = plt->graph(0)->data()->at(dataRange.begin()); // get range begin iterator from index
-              QCPGraphDataContainer::const_iterator end = plt->graph(0)->data()->at(dataRange.end()); // get range begin iterator from index
+          QCPGraphDataContainer::const_iterator begin = plt->graph(0)->data()->at(dataRange.begin()); // get range begin iterator from index
+          QCPGraphDataContainer::const_iterator end = plt->graph(0)->data()->at(dataRange.end()); // get range begin iterator from index
 
-              for (auto iter=begin; iter != end; iter++)
-              {
-                  selected.push_back(iter->key);
-                  numPoint++;
+          for (auto iter=begin; iter != end; iter++)
+          {
+              vLinePresent = false;
+              //check if we already selected a vline (a point can be selected only one, if the t is already present --> v line in that place)
+              for(auto present=lbldData.begin();present!=lbldData.end();present++){
+                  if(present->t == iter->key){
+                      vLinePresent = true;
+                      break;
+                  }
               }
-            }
-            if (numPoint == 1 && !isMultiSelection && !keyLbl.empty()){
-                addToSaveList(keyLbl[nextLblPos]);
-                nextLblPos++;
-                if(nextLblPos >= keyLbl.size())
-                    nextLblPos = 0;
-                QString nextLblStr = "Next label: ";
-                nextLabel->setText(nextLblStr.append(keyLbl[nextLblPos].label));
-            }
+              if(!vLinePresent){
+                selected.push_back(iter->key);
+                numPoint++;
+              }
+          }
+        }
+        if (numPoint == 1 && !isMultiSelection && !keyLbl.empty()){
+            addToSaveList(keyLbl[nextLblPos]);
+            nextLblPos++;
+            if(nextLblPos >= keyLbl.size())
+                nextLblPos = 0;
+            QString nextLblStr = "Next label: ";
+            nextLabel->setText(nextLblStr.append(keyLbl[nextLblPos].label));
         }
     }
 }
@@ -492,28 +502,31 @@ void MainGraph::addLabelDataToPlot(LabelData lblToAdd){
     lblToAdd.line->positions().last()->setAxes(plt->xAxis,plt->axisRect(0)->axis(QCPAxis::atLeft, 1));
 
     lblToAdd.line->start->setCoords(lblToAdd.t, 0.8);
-    lblToAdd.line->end->setCoords(lblToAdd.t, -0.8);
+    lblToAdd.line->end->setCoords(lblToAdd.t, -0.95);
 
-    lblToAdd.line->UpdateLabel(lblToAdd.t, 0.9,QString(lblToAdd.lbl.key));
+    float pos = 0.82;
+    for(auto iter = lbldData.begin(); iter!= lbldData.end(); iter++)
+    {
+        if(iter->t == lblToAdd.t)
+            if (pos <= iter->line->m_lineLabel->position->value())
+                pos = iter->line->m_lineLabel->position->value()+0.02;
+    }
+    lblToAdd.line->UpdateLabel(lblToAdd.t, pos,QString(lblToAdd.lbl.key));
     lblToAdd.line->SetVisibleCustom(true);
 }
 
 void MainGraph::removeFromSaveList(){//problem
-    QString s;
-    for (auto iterNew = selected.begin(); iterNew != selected.end(); iterNew++)
+    QString s = "Nothing to erase";
+    for(auto iter = lbldData.begin(); iter!= lbldData.end(); iter++)
     {
-        for(auto iterPresent = lbldData.begin(); iterPresent != lbldData.end(); iterPresent++)
+        if(iter->line->selected())
         {
-            if (iterPresent->t==*iterNew){
-                plt->removeItem(iterPresent->line);
-                lbldData.erase(iterPresent--);//erase, after position the iterator to the element before, next step it will go to the correct element
-                newSaveFile = true;
-                s = "Removed (Unsaved changes)";
-            }
+            plt->removeItem(iter->line);
+            lbldData.erase(iter--);//erase, after position the iterator to the element before, next step it will go to the correct element
+            newSaveFile = true;
+            s = "Removed (Unsaved changes)";
         }
     }
-    if(selected.size()>0 and s.isEmpty())
-        s = "Nothing to erase";
     ui->ev->setText(s);
     plt->deselectAll();
     selected.clear();
@@ -525,7 +538,8 @@ void MainGraph::on_mouse_move(QMouseEvent* e){
     double y = plt->axisRect(0)->axis(QCPAxis::atLeft, 1)->pixelToCoord(e->localPos().y());
     //double y = plt->yAxis->pixelToCoord(e->localPos().y());
     if(!dragging && !e->buttons().testFlag(Qt::LeftButton)){
-        double tollerance = 5;
+        double tollerance = 4*plt->xAxis->range().size()/deltaMax;///(plt->xAxis->range().maxRange-plt->xAxis->range().minRange);
+
         bool found = false;
         for(auto iterPresent = lbldData.begin(); iterPresent != lbldData.end(); iterPresent++)
         {
@@ -560,9 +574,17 @@ void MainGraph::on_mouse_move(QMouseEvent* e){
             xNew = xNew2;
 
         hovered->line->start->setCoords(xNew, 0.8);
-        hovered->line->end->setCoords(xNew, -0.8);
+        hovered->line->end->setCoords(xNew, -0.95);
 
-        hovered->line->UpdateLabel(xNew, 0.9 ,QString(hovered->lbl.key));
+        float pos = 0.82;
+        for(auto iter = lbldData.begin(); iter!= lbldData.end(); iter++)
+        {
+            if(iter->t == hovered->t && &(*iter) != hovered)
+                if (pos <= iter->line->m_lineLabel->position->value())
+                    pos = iter->line->m_lineLabel->position->value()+0.02;
+        }
+
+        hovered->line->UpdateLabel(xNew, pos ,QString(hovered->lbl.key));
         hovered->line->SetVisibleCustom(true);
 
         hovered->t = static_cast<double>(xNew);
