@@ -29,7 +29,6 @@ MainGraph::MainGraph(QApplication *app, QWidget *parent)
     myAxis->setTickLabels(false);
     myAxis->setTicks(false);
     myAxis->setVisible(false);
-    //nextLabel->setPen(QPen(Qt::black)); // show black border around text
 
 
     ui->appLayout->insertWidget(0,plt);
@@ -48,15 +47,8 @@ MainGraph::MainGraph(QApplication *app, QWidget *parent)
 
 MainGraph::~MainGraph()
 {
+    reset();
     delete ui;
-    if(annotationFile.isOpen()){
-        annotationFile.close();
-    }
-    for(auto it = lbldData.begin();it != lbldData.end(); it++)
-        plt->removeItem(it->line);
-    for (int i = 0; i < plt->itemCount(); i++){
-        plt->removeItem(plt->item(i));
-    }
 }
 
 void MainGraph::drawLineChart()
@@ -159,28 +151,7 @@ void MainGraph::on_sourcePath_returnPressed()
 
 void MainGraph::loadFile(QString fileName){
     //save and clear the previous data, load the new one
-    save();
-    if (ui->key->isEnabled()){
-        ui->key->setEnabled(false);
-        ui->lbl->setEnabled(false);
-        ui->addLbl->setEnabled(false);
-        ui->lblKeyList->setEnabled(false);
-    }
-    ui->lblKeyList->clear();
-    ui->lblKeyList->update();
-    if(annotationFile.isOpen()){
-        annotationFile.close();
-        annotationFile.setFileName("");
-    }
-    ui->saveFilePath->clear();
-    for (int i = 0; i < plt->graphCount();i++)
-        plt->removeGraph(i);
-    for(auto it = lbldData.begin();it != lbldData.end(); it++)
-        plt->removeItem(it->line);
-    data.clear();
-    lbldData.clear();
-    selected.clear();
-    keyLbl.clear();
+    reset();
 
     fileLoaded = 0;
     QString line;
@@ -254,13 +225,7 @@ void MainGraph::on_findSaveLocation_clicked()
 void MainGraph::openAndLoadAnnotation(QString fileName){
     //the check on fileName accessibility need to be done before
     //First wa save any possible previously opened labeld file
-    save();
-    for(auto it = lbldData.begin();it != lbldData.end(); it++)
-        plt->removeItem(it->line);
-    plt->deselectAll();
-    plt->replot();
-    keyLbl.clear();
-    lbldData.clear();
+    reset(true);
 
     QString line;
     QStringList wordList;
@@ -325,7 +290,6 @@ void MainGraph::saveAndUpdate(){
         ui->addLbl->setEnabled(true);
         ui->lblKeyList->setEnabled(true);
     }
-    ui->lblKeyList->clear();
     std::vector<Label>::iterator itr;
     for(itr=keyLbl.begin(); itr!=keyLbl.end(); itr++){
         QString lab = itr->label;
@@ -358,7 +322,6 @@ void MainGraph::save(){
         }
     }
 }
-
 
 void MainGraph::on_addLbl_clicked()
 {
@@ -415,6 +378,10 @@ void MainGraph::on_QCPMousePressed_pressed(QMouseEvent *){
 }
 
 void MainGraph::keyPressEvent(QKeyEvent *e){
+    Qt::KeyboardModifiers mod = baseApp->keyboardModifiers();
+    bool ctrlPressed = mod.testFlag(Qt::ControlModifier);
+    if(e->key() == Qt::Key_S && ctrlPressed)
+        save();
     if(isMultiSelection && !selected.empty()){
         for(unsigned long i = 0;i<keyLbl.size();i++)
         {
@@ -429,12 +396,12 @@ void MainGraph::keyPressEvent(QKeyEvent *e){
             }
         }
         if(e->key() == Qt::Key_Delete && selected.size() >0){
-            removeFromSaveList(); //problem here
+            removeFromSaveList();
         }
 
     }
     else if(e->key() == Qt::Key_Delete && selected.size() >0){
-        removeFromSaveList(); //problem here
+        removeFromSaveList();
     }
     else{
         for(unsigned long i = 0;i<keyLbl.size();i++){
@@ -628,4 +595,32 @@ double MainGraph::findAvgLastNPoints(double key, unsigned long pointNumber){
         prevKey = plt->graph(0)->data()->findBegin(prevKey,true)->key;
     }
     return sum/double(pointNumber);
+}
+
+void MainGraph::reset(bool onlyAnnotation){
+    save();
+    if(!onlyAnnotation){
+        ui->saveFilePath->clear();
+        for (int i = 0; i < plt->graphCount();i++)
+            plt->removeGraph(i);
+        data.clear();
+    }
+
+    for(auto it = lbldData.begin();it != lbldData.end(); it++)
+        plt->removeItem(it->line);
+    if(annotationFile.isOpen()){
+        annotationFile.close();
+        annotationFile.setFileName("");
+    }
+    if (ui->key->isEnabled()){
+        ui->key->setEnabled(false);
+        ui->lbl->setEnabled(false);
+        ui->addLbl->setEnabled(false);
+        ui->lblKeyList->setEnabled(false);
+    }
+    ui->lblKeyList->clear();
+    ui->lblKeyList->update();
+    lbldData.clear();
+    selected.clear();
+    keyLbl.clear();
 }

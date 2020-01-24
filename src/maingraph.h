@@ -80,6 +80,7 @@ public:
     void removeFromSaveList();
     void addLabelDataToPlot(LabelData lblToAdd);
     double findAvgLastNPoints(double key, unsigned long pointNumber = 100);
+    void reset(bool onlyAnnotation = false);
 
 private slots:
 
