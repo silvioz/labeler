@@ -642,6 +642,7 @@ void MainGraph::reset(bool onlyAnnotation){
     }
     ui->lblKeyList->clear();
     ui->lblKeyList->update();
+    nextLabel->setText("");
     lbldData.clear();
     selected.clear();
     keyLbl.clear();
